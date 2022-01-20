@@ -9,7 +9,8 @@
         mc:Ignorable="d"
         Background="#333"
         ResizeMode="CanResizeWithGrip"
-        Title="Skia Sharp" Height="450" Width="800">
+        WindowStartupLocation="Manual"
+        Title="Skia Sharp" Height="900" Width="1200">
     <Grid>
         <DockPanel>
             <Grid DockPanel.Dock="Top">

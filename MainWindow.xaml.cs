@@ -53,20 +53,23 @@ namespace SkiaSharpTestApp
             ctrSkElement.MouseDown += CtrSkElement_MouseDown;
             ctrSkElement.MouseUp += CtrSkElement_MouseUp;
 
-            const int count = 10000;
+            ctrSkElement.MouseLeave += CtrSkElement_MouseLeave;
+
+            const int count = 10;
             _drawItems = new List<DrawItem>(count);
 
             var perRow = (int)Math.Sqrt(count);
             const int size = 40;
-            const int margin = 10;
+            const int margin = 100;
+            const int off = 100;
             for (int i = 0; i < count; i++)
             {
                 int row = i / perRow;
                 int col = i % perRow;
 
                 _drawItems.Add(new DrawItem { 
-                    X = col * (size + margin),
-                    Y = row * (size + margin),
+                    X = off + col * (size + margin),
+                    Y = off + row * (size + margin),
                     Radius = size/2,
                     Paint = _paint
                 });
@@ -77,23 +80,51 @@ namespace SkiaSharpTestApp
             //Draw(ctrSkElement);
         }
 
+        private void CtrSkElement_MouseLeave(object sender, MouseEventArgs e)
+        {
+            Logger.Trace(">>>>>>>>>>>> LEAVE");
+            DoHitTest(null);
+            ctrSkElement.InvalidateVisual();
+        }
 
-        private SKPoint _startMove;
-        private bool isPanMode = false;
+        private SKPoint _startMove; //shared for pan and move operation
+        private bool _movedMouse;
+        private bool _isPanMode = false;
+        private bool _isMoveItemMode = false;
+        private DrawItem? _moveItem;
 
         private void CtrSkElement_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            var orgPoint = GetWorldPointFromMouseEvent(e);
+            var pointWnd = GetPointFromMouseEvent(e);
+
             Logger.Trace(">> MouseDown");
-            
-            ctrSkElement.CaptureMouse();
-            ctrSkElement.Cursor = Cursors.Hand;
 
-            var pos = e.GetPosition(ctrSkElement);
-            var pointWnd = new SKPoint((float)pos.X, (float)pos.Y);
-            //var point = _matrix.MapPoint(pointWnd.X, pointWnd.Y);
+            var hitItem = GetHitTestItem(orgPoint);
 
-            isPanMode = true;
-            _startMove = pointWnd;
+            if (hitItem != null)
+            {
+                ctrSkElement.CaptureMouse();
+                //ctrSkElement.Cursor = Cursors.SizeAll; //delay till first mouse move
+
+                _isMoveItemMode = true;
+                _moveItem = hitItem;
+                _startMove = new SKPoint(_moveItem.X, _moveItem.Y) - orgPoint; // here as offset in world coord
+                _movedMouse = false;
+            }
+            else
+            {
+                // **** PANING
+                ctrSkElement.CaptureMouse();
+                ctrSkElement.Cursor = Cursors.Hand;
+
+                //var pos = e.GetPosition(ctrSkElement);
+                //var pointWnd = new SKPoint((float)pos.X, (float)pos.Y);
+
+
+                _isPanMode = true;
+                _startMove = pointWnd;
+            }
         }
 
         private void CtrSkElement_MouseUp(object sender, MouseButtonEventArgs e)
@@ -101,13 +132,17 @@ namespace SkiaSharpTestApp
             ctrSkElement.ReleaseMouseCapture();
             ctrSkElement.Cursor = Cursors.Arrow;
 
-            isPanMode = false;
+            _isPanMode = false;
             _startMove = new SKPoint(0,0); // clear
+
+            // *** move mode
+            _isMoveItemMode = false;
+            _moveItem = null;
         }
 
         private void HandlePanOnMouseMove(SKPoint point)
         {
-            if (isPanMode)
+            if (_isPanMode)
             {
                 var off = (point - _startMove);
                 _matrix = _matrix.PostConcat(SKMatrix.CreateTranslation(off.X, off.Y));
@@ -115,6 +150,25 @@ namespace SkiaSharpTestApp
             }
         }
 
+        private void HandleMoveItemOnMouseMove(SKPoint point, SKPoint orgPoint)
+        {
+            
+            if (_moveItem == null)
+                return;
+
+            if (_isMoveItemMode)
+            {
+                if(!_movedMouse)
+                {
+                    ctrSkElement.Cursor = Cursors.SizeAll;
+                    _movedMouse = true;
+                }
+
+                var newPos = orgPoint + _startMove;
+                _moveItem.X = newPos.X;
+                _moveItem.Y = newPos.Y;
+            }
+        }
 
 
         private void CtrSkElement_MouseWheel(object sender, MouseWheelEventArgs e)
@@ -139,28 +193,66 @@ namespace SkiaSharpTestApp
 
         SKPoint _cirCenter = new SKPoint(100, 100);
 
-        private void CtrSkElement_MouseMove(object sender, MouseEventArgs e)
+        SKPoint GetPointFromMouseEvent(MouseEventArgs e)
         {
             var pos = e.GetPosition(ctrSkElement);
             var pointWnd = new SKPoint((float)pos.X, (float)pos.Y);
-            //var point = _matrix.MapPoint(pointWnd);
+            return pointWnd;
+        }
 
+        SKPoint GetWorldPointFromMouseEvent(MouseEventArgs e)
+        {
+            var pointWnd = GetPointFromMouseEvent(e);
+            return GetWorldPoint(pointWnd);
+        }
+
+        private SKPoint GetWorldPoint(SKPoint pointWnd)
+        {
             SKMatrix inverse;
-            bool inversedOK = _matrix.TryInvert(out inverse);
+            bool inversedOK = _matrix.TryInvert(out inverse); //todo: optimise
             if (!inversedOK)
+            {
+                Console.Beep();
                 Logger.Trace("ERROR: inverse");
+            }
 
             var orgPoint = inverse.MapPoint(pointWnd);
+            return orgPoint;
+        }
 
-            ctrLabelXYWnd.Text = $"Wnd(X={pos.X:F1} Y={pos.Y:F1})";
+        private void CtrSkElement_MouseMove(object sender, MouseEventArgs e)
+        {
+            //var pos = e.GetPosition(ctrSkElement);
+            //var pointWnd = new SKPoint((float)pos.X, (float)pos.Y);
+            ////var point = _matrix.MapPoint(pointWnd);
+
+            //SKMatrix inverse;
+            //bool inversedOK = _matrix.TryInvert(out inverse);
+            //if (!inversedOK)
+            //    Logger.Trace("ERROR: inverse");
+
+            //var orgPoint = inverse.MapPoint(pointWnd);
+
+            var pointWnd = GetPointFromMouseEvent(e);
+            var orgPoint = GetWorldPointFromMouseEvent(e);
+
+            ctrLabelXYWnd.Text = $"Wnd(X={pointWnd.X:F1} Y={pointWnd.Y:F1})";
             //ctrLabelXYLogical.Text = $"Map(X={point.X:F2} Y={point.Y:F2})";
             ctrLabelXYOrg.Text = $"Org(X={orgPoint.X:F2} Y={orgPoint.Y:F2})";
 
-
-
-            //DoHitTest1(point);
             DoHitTest(orgPoint);
+
             HandlePanOnMouseMove(pointWnd);
+            HandleMoveItemOnMouseMove(pointWnd, orgPoint);
+
+            //if (DoHitTest(orgPoint))
+            //{
+
+            //}
+            //else
+            //{
+
+            //}
 
             if (e.LeftButton == MouseButtonState.Pressed)
             {
@@ -175,78 +267,46 @@ namespace SkiaSharpTestApp
             ctrSkElement.InvalidateVisual();
         }
 
+        private bool DoHitTest(SKPoint? point)
+        {
+            return GetHitTestItem(point) != null;
+        }
 
 
-        private void DoHitTest(SKPoint point)
+        private DrawItem? GetHitTestItem(SKPoint? point)
         {
             //DrawItem[] cc = new DrawItem[2];
 
-            foreach(var it in _drawItems)
+            int hitCount = 0;
+            DrawItem hitItem = null;
+
+            foreach (var it in _drawItems)
             //for (int i = 0; i < _drawItems.Count; i++)
             {
                 //ref DrawItem it = ref _drawItems[i];
-                var vv = point - new SKPoint(it.X, it.Y);
+
+                if(point == null)
+                {
+                    it.Paint = _paint;
+                    continue;
+                }
+
+                
+                var vv = point.Value - new SKPoint(it.X, it.Y);
                 if(vv.Length <= it.Radius)
                 {
                     it.Paint = _paintHighlight;
+                    hitCount++;
+                    hitItem = it;
+                    break; // todo: handle many items
                 }
                 else
                 {
                     it.Paint = _paint;
                 }
             }
-        }
 
-        private void DoHitTest2(SKPoint point)
-        {
-            //var pp = _matrix.MapPoint(_cirCenter);
-            //pp = _matrix.MapPoint(pp);
-
-            //Logger.Trace($"px={pp.X}, py={pp.Y}");
-
-            var vv = point - _cirCenter;
-
-            //Logger.Trace($"len={vv.Length}");
-
-            var orgColor = _paint.Color;
-
-            if (vv.Length <= 100)
-            {
-                _paint.Color = SKColors.BlueViolet;
-            }
-            else
-            {
-                _paint.Color = _color;
-            }
-
-            //if (orgColor != _paint.Color)
-            //    ctrSkElement.InvalidateVisual();
-        }
-
-        private void DoHitTest1(SKPoint point)
-        {
-            var pp = _matrix.MapPoint(_cirCenter);
-            pp = _matrix.MapPoint(pp);
-
-            //Logger.Trace($"px={pp.X}, py={pp.Y}");
-
-            var vv = point - pp;
-
-            //Logger.Trace($"len={vv.Length}");
-
-            var orgColor = _paint.Color;
-
-            if (vv.Length <= 100)
-            {
-                _paint.Color = SKColors.BlueViolet;
-            }
-            else
-            {
-                _paint.Color = _color;
-            }
-
-            if (orgColor != _paint.Color)
-                ctrSkElement.InvalidateVisual();
+            return hitItem;
         }
 
         static SKColor _color = new SKColor(0x2c, 0x3e, 0x50);
