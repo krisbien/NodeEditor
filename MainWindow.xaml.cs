@@ -1,6 +1,8 @@
 ﻿using SkiaSharp;
+using SkiaSharpTestApp.Logging;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -21,95 +23,311 @@ namespace SkiaSharpTestApp
     /// </summary>
     public partial class MainWindow : Window
     {
+
+        class DrawItem
+        {
+            public float X;
+            public float Y;
+            public float Radius;
+            //public SKColor Color;
+            public SKPaint Paint;
+        }
+
+        List<DrawItem> _drawItems = new List<DrawItem>();
+
+        //private readonly DrawingBox _box;
+        private SKMatrix _matrix;
+
         public MainWindow()
         {
             InitializeComponent();
+            //_box = new DrawingBox();
+            _matrix = SKMatrix.CreateIdentity();
+
             ctrSkElement.PaintSurface += CtrSkElement_PaintSurface;
+            ctrSkElement.MouseMove += CtrSkElement_MouseMove;
+            ctrSkElement.MouseWheel += CtrSkElement_MouseWheel;
+
+            //ctrSkElement.MouseLeftButtonDown += CtrSkElement_MouseLeftButtonDown;
+            //ctrSkElement.MouseLeftButtonUp += CtrSkElement_MouseLeftButtonUp;
+            ctrSkElement.MouseDown += CtrSkElement_MouseDown;
+            ctrSkElement.MouseUp += CtrSkElement_MouseUp;
+
+            const int count = 10000;
+            _drawItems = new List<DrawItem>(count);
+
+            var perRow = (int)Math.Sqrt(count);
+            const int size = 40;
+            const int margin = 10;
+            for (int i = 0; i < count; i++)
+            {
+                int row = i / perRow;
+                int col = i % perRow;
+
+                _drawItems.Add(new DrawItem { 
+                    X = col * (size + margin),
+                    Y = row * (size + margin),
+                    Radius = size/2,
+                    Paint = _paint
+                });
+            }
+            
+
+            //ctrSkElement.DragEnter
             //Draw(ctrSkElement);
         }
 
-        void Draw(SkiaSharp.Views.WPF.SKElement ctrSkElement)
+
+        private SKPoint _startMove;
+        private bool isPanMode = false;
+
+        private void CtrSkElement_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            //var info = new SKImageInfo(640, 480);
+            Logger.Trace(">> MouseDown");
             
-            //using (var surface = SKSurface.Create(info))
-            //{
-            //    SKCanvas canvas = surface.Canvas;
+            ctrSkElement.CaptureMouse();
+            ctrSkElement.Cursor = Cursors.Hand;
 
-            //    canvas.Clear(SKColors.White);
+            var pos = e.GetPosition(ctrSkElement);
+            var pointWnd = new SKPoint((float)pos.X, (float)pos.Y);
+            //var point = _matrix.MapPoint(pointWnd.X, pointWnd.Y);
 
-            //    // set up drawing tools
-            //    var paint = new SKPaint
-            //    {
-            //        IsAntialias = true,
-            //        Color = new SKColor(0x2c, 0x3e, 0x50),
-            //        StrokeCap = SKStrokeCap.Round
-            //    };
+            isPanMode = true;
+            _startMove = pointWnd;
+        }
 
-            //    // create the Xamagon path
-            //    var path = new SKPath();
-            //    path.MoveTo(71.4311121f, 56f);
-            //    path.CubicTo(68.6763107f, 56.0058575f, 65.9796704f, 57.5737917f, 64.5928855f, 59.965729f);
-            //    path.LineTo(43.0238921f, 97.5342563f);
-            //    path.CubicTo(41.6587026f, 99.9325978f, 41.6587026f, 103.067402f, 43.0238921f, 105.465744f);
-            //    path.LineTo(64.5928855f, 143.034271f);
-            //    path.CubicTo(65.9798162f, 145.426228f, 68.6763107f, 146.994582f, 71.4311121f, 147f);
-            //    path.LineTo(114.568946f, 147f);
-            //    path.CubicTo(117.323748f, 146.994143f, 120.020241f, 145.426228f, 121.407172f, 143.034271f);
-            //    path.LineTo(142.976161f, 105.465744f);
-            //    path.CubicTo(144.34135f, 103.067402f, 144.341209f, 99.9325978f, 142.976161f, 97.5342563f);
-            //    path.LineTo(121.407172f, 59.965729f);
-            //    path.CubicTo(120.020241f, 57.5737917f, 117.323748f, 56.0054182f, 114.568946f, 56f);
-            //    path.LineTo(71.4311121f, 56f);
-            //    path.Close();
+        private void CtrSkElement_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            ctrSkElement.ReleaseMouseCapture();
+            ctrSkElement.Cursor = Cursors.Arrow;
 
-            //    // draw the Xamagon path
-            //    canvas.DrawPath(path, paint);
+            isPanMode = false;
+            _startMove = new SKPoint(0,0); // clear
+        }
 
-            //    ctrSkElement.PaintSurface += CtrSkElement_PaintSurface;
-            //}
+        private void HandlePanOnMouseMove(SKPoint point)
+        {
+            if (isPanMode)
+            {
+                var off = (point - _startMove);
+                _matrix = _matrix.PostConcat(SKMatrix.CreateTranslation(off.X, off.Y));
+                _startMove = point;
+            }
+        }
 
+
+
+        private void CtrSkElement_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            var pos = e.GetPosition(ctrSkElement);
+            var pointWnd = new SKPoint((float)pos.X, (float)pos.Y);
+
+            const float ff = 1.25f;
+            var scaleFact = e.Delta > 0 ? (ff * (e.Delta / 120.0f)) : (1.0f/(ff * (-e.Delta / 120.0f)));
+            //var scaleFact = e.Delta > 0 ? ff : 1 / ff;
+            Zoom(pointWnd, scaleFact);
+            ctrSkElement.InvalidateVisual();
 
         }
+
+        public void Zoom(SKPoint point, float scaleFactor)
+        {
+            _matrix = _matrix.PostConcat(SKMatrix.CreateScale(scaleFactor, scaleFactor, point.X, point.Y));
+        }
+
+
+
+        SKPoint _cirCenter = new SKPoint(100, 100);
+
+        private void CtrSkElement_MouseMove(object sender, MouseEventArgs e)
+        {
+            var pos = e.GetPosition(ctrSkElement);
+            var pointWnd = new SKPoint((float)pos.X, (float)pos.Y);
+            //var point = _matrix.MapPoint(pointWnd);
+
+            SKMatrix inverse;
+            bool inversedOK = _matrix.TryInvert(out inverse);
+            if (!inversedOK)
+                Logger.Trace("ERROR: inverse");
+
+            var orgPoint = inverse.MapPoint(pointWnd);
+
+            ctrLabelXYWnd.Text = $"Wnd(X={pos.X:F1} Y={pos.Y:F1})";
+            //ctrLabelXYLogical.Text = $"Map(X={point.X:F2} Y={point.Y:F2})";
+            ctrLabelXYOrg.Text = $"Org(X={orgPoint.X:F2} Y={orgPoint.Y:F2})";
+
+
+
+            //DoHitTest1(point);
+            DoHitTest(orgPoint);
+            HandlePanOnMouseMove(pointWnd);
+
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                //Logger.Trace("PRESSED");
+            }
+
+            if (e.LeftButton == MouseButtonState.Released)
+            {
+                //Logger.Trace("RELEASED");
+            }
+
+            ctrSkElement.InvalidateVisual();
+        }
+
+
+
+        private void DoHitTest(SKPoint point)
+        {
+            //DrawItem[] cc = new DrawItem[2];
+
+            foreach(var it in _drawItems)
+            //for (int i = 0; i < _drawItems.Count; i++)
+            {
+                //ref DrawItem it = ref _drawItems[i];
+                var vv = point - new SKPoint(it.X, it.Y);
+                if(vv.Length <= it.Radius)
+                {
+                    it.Paint = _paintHighlight;
+                }
+                else
+                {
+                    it.Paint = _paint;
+                }
+            }
+        }
+
+        private void DoHitTest2(SKPoint point)
+        {
+            //var pp = _matrix.MapPoint(_cirCenter);
+            //pp = _matrix.MapPoint(pp);
+
+            //Logger.Trace($"px={pp.X}, py={pp.Y}");
+
+            var vv = point - _cirCenter;
+
+            //Logger.Trace($"len={vv.Length}");
+
+            var orgColor = _paint.Color;
+
+            if (vv.Length <= 100)
+            {
+                _paint.Color = SKColors.BlueViolet;
+            }
+            else
+            {
+                _paint.Color = _color;
+            }
+
+            //if (orgColor != _paint.Color)
+            //    ctrSkElement.InvalidateVisual();
+        }
+
+        private void DoHitTest1(SKPoint point)
+        {
+            var pp = _matrix.MapPoint(_cirCenter);
+            pp = _matrix.MapPoint(pp);
+
+            //Logger.Trace($"px={pp.X}, py={pp.Y}");
+
+            var vv = point - pp;
+
+            //Logger.Trace($"len={vv.Length}");
+
+            var orgColor = _paint.Color;
+
+            if (vv.Length <= 100)
+            {
+                _paint.Color = SKColors.BlueViolet;
+            }
+            else
+            {
+                _paint.Color = _color;
+            }
+
+            if (orgColor != _paint.Color)
+                ctrSkElement.InvalidateVisual();
+        }
+
+        static SKColor _color = new SKColor(0x2c, 0x3e, 0x50);
+
+        SKPaint _paint = new SKPaint
+        {
+                IsAntialias = true,
+                Color = _color, //new SKColor(0x2c, 0x3e, 0x50),
+                StrokeCap = SKStrokeCap.Round
+        };
+
+        SKPaint _paintHighlight = new SKPaint
+        {
+            IsAntialias = true,
+            Color = SKColors.BlueViolet,
+            StrokeCap = SKStrokeCap.Round
+        };
+
+        SKPaint _paintRedCross = new SKPaint
+        {
+            IsAntialias = true,
+            Color = SKColors.Red,
+            StrokeCap = SKStrokeCap.Square
+        };
 
         private void CtrSkElement_PaintSurface(object? sender, SkiaSharp.Views.Desktop.SKPaintSurfaceEventArgs e)
         {
             SKCanvas canvas = e.Surface.Canvas;
+            canvas.SetMatrix(_matrix);
 
             var color = new SKColor(0x22, 0x22, 0x22, (byte)(255 * 1.0));
-            //canvas.Clear(SKColors.Black);
             canvas.Clear(color);
 
+            //canvas.DrawCircle(new SKPoint(100, 100), 100, _paint);
+            //// paint red cross "+"
+            //canvas.DrawLine(new SKPoint(100, 100) + new SKPoint(-10, 0), new SKPoint(100, 100) + new SKPoint(+10, 0), _paintRedCross);
+            //canvas.DrawLine(new SKPoint(100, 100) + new SKPoint(0, -10), new SKPoint(100, 100) + new SKPoint(0, +10), _paintRedCross);
 
-            // set up drawing tools
-            var paint = new SKPaint
+            foreach(var it in _drawItems)
             {
-                IsAntialias = true,
-                Color = new SKColor(0x2c, 0x3e, 0x50),
-                StrokeCap = SKStrokeCap.Round
-            };
-
-            // create the Xamagon path
-            var path = new SKPath();
-            path.MoveTo(71.4311121f, 56f);
-            path.CubicTo(68.6763107f, 56.0058575f, 65.9796704f, 57.5737917f, 64.5928855f, 59.965729f);
-            path.LineTo(43.0238921f, 97.5342563f);
-            path.CubicTo(41.6587026f, 99.9325978f, 41.6587026f, 103.067402f, 43.0238921f, 105.465744f);
-            path.LineTo(64.5928855f, 143.034271f);
-            path.CubicTo(65.9798162f, 145.426228f, 68.6763107f, 146.994582f, 71.4311121f, 147f);
-            path.LineTo(114.568946f, 147f);
-            path.CubicTo(117.323748f, 146.994143f, 120.020241f, 145.426228f, 121.407172f, 143.034271f);
-            path.LineTo(142.976161f, 105.465744f);
-            path.CubicTo(144.34135f, 103.067402f, 144.341209f, 99.9325978f, 142.976161f, 97.5342563f);
-            path.LineTo(121.407172f, 59.965729f);
-            path.CubicTo(120.020241f, 57.5737917f, 117.323748f, 56.0054182f, 114.568946f, 56f);
-            path.LineTo(71.4311121f, 56f);
-            path.Close();
-
-            // draw the Xamagon path
-            canvas.DrawPath(path, paint);
-            
+                canvas.DrawCircle(new SKPoint(it.X, it.Y), it.Radius, it.Paint);
+            }
         }
+
+        private void btnMoveLeft_Click(object sender, RoutedEventArgs e)
+        {
+            //_box.XTranslate += 50;
+            _matrix.TransX += 50;
+            ctrSkElement.InvalidateVisual();
+        }
+
+        private void btnMoveRight_Click(object sender, RoutedEventArgs e)
+        {
+            //_box.XTranslate -= 50;
+            _matrix.TransX -= 50;
+            ctrSkElement.InvalidateVisual();
+        }
+
+        private void btnMoveUp_Click(object sender, RoutedEventArgs e)
+        {
+            //_box.YTranslate += 50;
+            _matrix.TransY += 50;
+            ctrSkElement.InvalidateVisual();
+        }
+
+        private void btnMoveDown_Click(object sender, RoutedEventArgs e)
+        {
+            //_box.YTranslate -= 50;
+            _matrix.TransY -= 50;
+            ctrSkElement.InvalidateVisual();
+        }
+
+        private void btnAction_Click(object sender, RoutedEventArgs e)
+        {
+            //_paint.Color = SKColors.CadetBlue;
+            _color = SKColors.CadetBlue;
+            _paint.Color = _color;
+            ctrSkElement.InvalidateVisual();
+        }
+
+        
 
         //see: https://stackoverflow.com/questions/61417583/skiasharp-make-a-bitmap-on-a-path-clickable
         // canvas.TotalMatrix ??

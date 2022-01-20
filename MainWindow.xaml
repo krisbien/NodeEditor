@@ -12,9 +12,24 @@
         Title="Skia Sharp" Height="450" Width="800">
     <Grid>
         <DockPanel>
-            <StatusBar DockPanel.Dock="Bottom" Background="#222" Foreground="DarkGray">
-                <StatusBarItem>Ready.</StatusBarItem>
-            </StatusBar>
+            <Grid DockPanel.Dock="Top">
+                <WrapPanel>
+                    <Button Name="btnMoveLeft" MinWidth="20" Click="btnMoveLeft_Click">←</Button>
+                    <Button Name="btnMoveRight" MinWidth="20" Click="btnMoveRight_Click">→</Button>
+                    <Button Name="btnMoveUp" MinWidth="20" Click="btnMoveUp_Click">↑</Button>
+                    <Button Name="btnMoveDown" Click="btnMoveDown_Click" MinWidth="20">↓</Button>
+                    <Button Name="btnAction" MinWidth="20" Click="btnAction_Click">Action</Button>
+                    <TextBlock Name="ctrLabelXYWnd" Text="X=  Y=" Margin="10 0" />
+                    <TextBlock Name="ctrLabelXYLogical" Foreground="Gray" Text="X=  Y="  Margin="10 0"/>
+                    <TextBlock Name="ctrLabelXYOrg" Foreground="Brown" Text="X=  Y="  Margin="10 0"/>
+                    
+                </WrapPanel>
+            </Grid>
+            <Grid DockPanel.Dock="Bottom">
+                <StatusBar Background="#222" Foreground="DarkGray">
+                    <StatusBarItem>Ready.</StatusBarItem>
+                </StatusBar>
+            </Grid>
             <Border Margin="5" BorderBrush="DarkViolet" BorderThickness="1">
                 <skia:SKElement Name="ctrSkElement"  />
             </Border>
